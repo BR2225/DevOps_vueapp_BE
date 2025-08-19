@@ -1,0 +1,76 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: my-backend-repo   # Replace with your ECR repo name
+  EKS_CLUSTER_NAME: myproject-eks  # Replace with your EKS cluster name
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    # 1️⃣ Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2️⃣ Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}  # GitHub secret
+        aws-region: ${{ env.AWS_REGION }}
+
+    # 3️⃣ Login to ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    # 4️⃣ Build Docker image
+    - name: Build Docker image
+      run: |
+        IMAGE_TAG=${GITHUB_SHA}
+        docker build -t $ECR_REPO:$IMAGE_TAG .
+        docker tag $ECR_REPO:$IMAGE_TAG ${{ steps.login-ecr.outputs.registry }}/$ECR_REPO:$IMAGE_TAG
+
+    # 5️⃣ Push Docker image to ECR
+    - name: Push Docker image to ECR
+      run: |
+        IMAGE_TAG=${GITHUB_SHA}
+        docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPO:$IMAGE_TAG
+
+    # 6️⃣ Terraform init
+    - name: Terraform Init
+      working-directory: infra
+      run: terraform init
+
+    # 7️⃣ Terraform plan
+    - name: Terraform Plan
+      working-directory: infra
+      run: terraform plan -var-file="terraform.tfvars"
+
+    # 8️⃣ Terraform apply
+    - name: Terraform Apply
+      working-directory: infra
+      run: terraform apply -auto-approve -var-file="terraform.tfvars"
+
+    # 9️⃣ Update kubeconfig for EKS
+    - name: Configure kubectl
+      run: |
+        aws eks --region $AWS_REGION update-kubeconfig --name $(terraform -chdir=infra output -raw eks_cluster_name)
+
+    # 🔟 Deploy Kubernetes manifests
+    - name: Deploy to EKS
+      run: |
+        IMAGE_TAG=${GITHUB_SHA}
+        kubectl set image deployment/backend backend=${{ steps.login-ecr.outputs.registry }}/$ECR_REPO:$IMAGE_TAG -n default
+        kubectl apply -f k8s/
