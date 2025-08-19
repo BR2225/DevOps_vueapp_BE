@@ -1,0 +1,12 @@
+core
+static
+media
+thumbnails
+videos
+env
+
+db.sqlite3
+
+__pycache__
+vdo_api/__pycache__
+ 
