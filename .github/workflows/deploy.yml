@@ -13,6 +13,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:   # ✅ define environment variables here
+      AWS_REGION: us-east-1
+      ECR_REPO: backend-service     # 👈 choose your repo name (must exist in ECR)
+      EKS_CLUSTER_NAME: myproject-eks
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -22,7 +27,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       # Login to ECR
       - name: Login to Amazon ECR
@@ -40,7 +45,7 @@ jobs:
       # Update kubeconfig for EKS
       - name: Update kubeconfig
         run: |
-          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region us-east-1
+          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
       # Deploy to Kubernetes
       - name: Deploy to EKS
